@@ -1,6 +1,7 @@
 {
     "MAX_IMAGE_SIZE": "10000000",
     "INPUT_BUCKET": "eyeballr-input",
+    "TMP_DIR": "/tmp",
     "TMP_BUCKET": "eyeballr-tmp",
     "OUTPUT_BUCKET": "eyeballr-output",
     "OUTPUT_WIDTH": 450,

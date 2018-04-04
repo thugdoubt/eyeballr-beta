@@ -20,7 +20,6 @@ exports.uploadImage = function(req, res) {
     // parse cookies, get/generate UID
     let cookies = cookie.parse(req.headers.cookie || '');
     let uid = ('UID' in cookies) ? cookies.UID : uuidv4();
-    console.log(cookies);
     console.log('UID:', uid);
     // set up the response
     res.setHeader('content-type', 'application/json');
@@ -37,13 +36,16 @@ exports.uploadImage = function(req, res) {
             }
             // process the image
             let img = decodeBase64Image(req.body.data);
+            if (img === undefined) {
+                return httpError(res, 400, "invalid image data");
+            }
             if (img.data.length > config.MAX_IMAGE_SIZE) {
                 return httpError(res, 400, "image too large");
             }
             console.log('image type:', img.type);
             console.log('image size:', img.data.length);
             // upload the file for processing
-            let filename = `${uid}/${req.body.filename}`;
+            let filename = `${uid}/${path.parse(req.body.filename).base}`;
             let file = gcs.bucket(config.INPUT_BUCKET).file(filename);
             file.save(img.data, function(err) {
                 if (err) {
@@ -60,7 +62,20 @@ exports.uploadImage = function(req, res) {
 
 exports.processImage = function(event) {
     let file = event.data;
-    let tempFilename = `/tmp/${path.parse(file.name).base}`;
+    let p = path.parse(file.name);
+    let uid = path.basename(p.dir);
+    let basename = p.base;
+    let tempDir = `${config.TMP_DIR}/${uid}`;
+    let tempFilename = `${tempDir}/${basename}`;
+    let outputFilename = `${uid}/${basename}`;
+
+    console.log('tempDir', tempDir);
+    console.log('tempFilename', tempFilename);
+    console.log('outputFilename', outputFilename);
+
+    if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir);
+    }
 
     return Promise.resolve()
         .then(function() {
@@ -100,14 +115,20 @@ exports.processImage = function(event) {
         .then(function(filename) {
             console.log('uploading image!');
             // upload image
-            return gcs.bucket(config.TMP_BUCKET).upload(filename, {destination: file.name})
+            return gcs.bucket(config.TMP_BUCKET).upload(filename, {destination: outputFilename})
         })
+        .then(function() {
+            console.log('cleaning input image');
+            // clean up
+            fs.unlinkSync(tempFilename);
+            return gcs.bucket(config.INPUT_BUCKET).file(file.name).delete()
+        })
+        /*
         .then(function() {
             console.log('listing files');
             // fetch the list of files in the tmp bucket
             return gcs.bucket(config.TMP_BUCKET).getFiles();
         })
-        /*
         .then(function(data) {
             console.log('fetching files');
             let files = data[0];
@@ -142,7 +163,7 @@ exports.processImage = function(event) {
         })
         */
         .then(function() {
-            console.log(`File ${file.name} processed`);
+            console.log(`File ${outputFilename} processed`);
         })
         .catch(function(err) {
             console.log('processImage error:', err);
@@ -155,8 +176,13 @@ function httpError(response, statusCode, errorMessage) {
 
 // https://stackoverflow.com/questions/20267939/nodejs-write-base64-image-file
 function decodeBase64Image(dataString) {
-    let matches = dataString.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+    console.log('decoding image:', dataString.substring(0, 30));
+    let matches = dataString.match(/^data:([A-Za-z-\+\/]+);base64,(.+)$/m);
     let response = {};
+    if (!matches) {
+        console.log('malformed content');
+        return undefined;
+    }
     if (matches.length !== 3) {
         console.log('invalid input string');
         return undefined;
