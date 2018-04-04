@@ -1,0 +1,11 @@
+{
+    "MAX_IMAGE_SIZE": "10000000",
+    "INPUT_BUCKET": "eyeballr-input",
+    "TMP_BUCKET": "eyeballr-tmp",
+    "OUTPUT_BUCKET": "eyeballr-output",
+    "OUTPUT_WIDTH": 450,
+    "OUTPUT_HEIGHT": 600,
+    "PUPIL_DISTANCE": 150,
+    "PUPIL_X": 150,
+    "PUPIL_Y": 225
+}

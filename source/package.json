@@ -1,0 +1,13 @@
+{
+    "name": "eyeballr-beta",
+    "version": "0.0.1",
+    "main": "index.js",
+    "dependencies": {
+        "@google-cloud/pubsub": "^0.18.0",
+        "@google-cloud/storage": "^1.6.0",
+        "@google-cloud/vision": "^0.18.0",
+        "image-size": "^0.6.2",
+        "uuid": "^3.2.1",
+        "cookie": "^0.3.1"
+    }
+}
