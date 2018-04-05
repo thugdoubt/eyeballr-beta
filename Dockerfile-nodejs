@@ -1,0 +1,10 @@
+FROM mhart/alpine-node:9.10.0
+
+WORKDIR /opt/eyeballr
+COPY source .
+RUN addgroup -g 6666 eyeballr && \
+    adduser -D -u 6666 -G eyeballr eyeballr && \
+    chown -R eyeballr: .
+USER eyeballr
+RUN npm install
+CMD ["npm", "start"]

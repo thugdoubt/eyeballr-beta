@@ -1,0 +1,12 @@
+FROM alpine:latest
+
+COPY conf/default.conf /etc/nginx/conf.d/default.conf
+COPY conf/nginx.conf /etc/nginx/nginx.conf
+WORKDIR /opt/eyeballr
+COPY static .
+RUN addgroup -g 6666 eyeballr && \
+    adduser -D -u 6666 -G eyeballr eyeballr && \
+    chown -R eyeballr: . && \
+    apk update && \
+    apk add nginx
+CMD ["nginx"]

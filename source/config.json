@@ -8,5 +8,7 @@
     "OUTPUT_HEIGHT": 600,
     "PUPIL_DISTANCE": 150,
     "PUPIL_X": 150,
-    "PUPIL_Y": 225
+    "PUPIL_Y": 225,
+    "API_PORT": 6666,
+    "API_HOST": "0.0.0.0"
 }
