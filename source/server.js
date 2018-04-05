@@ -4,6 +4,7 @@ const config = require('./config.json');
 const express = require('express');
 
 const app = express();
+
 app.get('/ok', function(req, res) {
     console.log('OK');
     res.send('eyeballr OK');
