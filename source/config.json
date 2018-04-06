@@ -1,5 +1,6 @@
 {
     "MAX_IMAGE_SIZE": "10000000",
+    "JSON_REQUEST_LIMIT": "20mb",
     "INPUT_BUCKET": "eyeballr-input",
     "TMP_DIR": "/tmp",
     "TMP_BUCKET": "eyeballr-tmp",
