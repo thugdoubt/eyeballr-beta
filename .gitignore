@@ -2,3 +2,5 @@
 venv
 *.key
 *.csr
+*.pem
+*.crt
