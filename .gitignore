@@ -1,6 +1,5 @@
 *.swp
 venv
-*.key
-*.csr
-*.pem
-*.crt
+/secrets
+node_modules
+package-lock.json
