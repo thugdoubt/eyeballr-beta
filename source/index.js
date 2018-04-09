@@ -12,54 +12,6 @@ const gcs = new storage();
 const vision = require('@google-cloud/vision');
 const client = new vision.ImageAnnotatorClient();
 
-exports.uploadImage = function(req, res) {
-    // check the method
-    if (req.method !== 'POST') {
-        httpError(res, 400, "use POST");
-    }
-    // parse cookies, get/generate UID
-    let cookies = cookie.parse(req.headers.cookie || '');
-    let uid = ('UID' in cookies) ? cookies.UID : uuidv4();
-    console.log('UID:', uid);
-    // set up the response
-    res.setHeader('content-type', 'application/json');
-    res.cookie('UID', uid, { maxAge: 999999999 });
-    // process the image
-    switch (req.get('content-type')) {
-        case 'application/json':
-            // check required elements
-            if (req.body.filename === undefined) {
-                return httpError(res, 400, "missing filename");
-            }
-            if (req.body.data === undefined) {
-                return httpError(res, 400, "missing image data");
-            }
-            // process the image
-            let img = decodeBase64Image(req.body.data);
-            if (img === undefined) {
-                return httpError(res, 400, "invalid image data");
-            }
-            if (img.data.length > config.MAX_IMAGE_SIZE) {
-                return httpError(res, 400, "image too large");
-            }
-            console.log('image type:', img.type);
-            console.log('image size:', img.data.length);
-            // upload the file for processing
-            let filename = `${uid}/${path.parse(req.body.filename).base}`;
-            let file = gcs.bucket(config.INPUT_BUCKET).file(filename);
-            file.save(img.data, function(err) {
-                if (err) {
-                    return httpError(res, 500, err);
-                }
-            });
-            break;
-        default:
-            return httpError(res, 400, "invalid content-type");
-    }
-    // yay!
-    res.status(200).send(JSON.stringify({"status": "OK"}));
-};
-
 exports.processImage = function(event) {
     let file = event.data;
     let p = path.parse(file.name);
@@ -123,25 +75,42 @@ exports.processImage = function(event) {
             fs.unlinkSync(tempFilename);
             return gcs.bucket(config.INPUT_BUCKET).file(file.name).delete()
         })
-        /*
+        .then(function() {
+            console.log(`File ${outputFilename} processed`);
+        })
+        .catch(function(err) {
+            console.log('processImage error:', err);
+        });
+};
+
+exports.mergeImage = function(event, callback) {
+    let message = event.data;
+    let uid = Buffer.from(message.data, 'base64').toString();
+    console.log(uid);
+    let tempDir = `${config.TMP_DIR}/${uid}-animate`;
+
+    console.log('tempDir', tempDir);
+
+    if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir);
+    }
+
+    return Promise.resolve()
         .then(function() {
             console.log('listing files');
             // fetch the list of files in the tmp bucket
-            return gcs.bucket(config.TMP_BUCKET).getFiles();
+            return gcs.bucket(config.TMP_BUCKET).getFiles({prefix: uid})
         })
         .then(function(data) {
             console.log('fetching files');
             let files = data[0];
-            let tmpDir = '/tmp/animate';
             let bucket = gcs.bucket(config.TMP_BUCKET);
             let promises = [[]];
-            try {
-                fs.mkdirSync(tmpDir);
-            } catch(err) {
-                //
+            if (files.length < 2) {
+                throw new Error('Not enough files to animate!');
             }
             files.forEach(function(f) {
-                let tmpFile = `${tmpDir}/${path.parse(f.name).base}`;
+                let tmpFile = `${tempDir}/${path.parse(f.name).base}`;
                 console.log(tmpFile);
                 promises[0].push(tmpFile);
                 promises.push(bucket.file(f.name).download({destination: tmpFile}));
@@ -152,21 +121,22 @@ exports.processImage = function(event) {
             console.log('downloded all files!');
             let files = data[0];
             console.log(files);
-            let outputFile = '/tmp/animate/out.gif';
+            let outputFile = `${tempDir}/out.gif`;
             let command = 'convert -loop 0 -delay 10 ' + files.join(' ') + ' ' + outputFile;
             return Promise.all([outputFile, promiseExec(command)]);
         })
         .then(function(data) {
             let outputFile = data[0];
+            let uploadFile = `${uid}/out.gif`;
             console.log('animated as', outputFile);
-            return gcs.bucket(config.OUTPUT_BUCKET).upload(outputFile, {destination: path.parse(outputFile).base})
+            return gcs.bucket(config.OUTPUT_BUCKET).upload(outputFile, {destination: uploadFile});
         })
-        */
         .then(function() {
-            console.log(`File ${outputFilename} processed`);
+            console.log('animation complete');
+            callback();
         })
         .catch(function(err) {
-            console.log('processImage error:', err);
+            console.log('mergeImage error:', err);
         });
 };
 

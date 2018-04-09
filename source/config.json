@@ -1,4 +1,11 @@
 {
+    "DATASTORE_PREFIX": "eyeballr-beta-session",
+    "COOKIE_SECURE": true,
+    "COOKIE_NAME": "eyeballr.sid",
+    "COOKIE_MAX_AGE": 8553600000,
+    "SESSION_SECRET": "This too shall pass666.414.",
+    "PROJECT_ID": "eyeballr-beta",
+    "TOPIC_NAME": "eyeballr-beta-publish",
     "MAX_IMAGE_SIZE": "10000000",
     "JSON_REQUEST_LIMIT": "20mb",
     "INPUT_BUCKET": "eyeballr-input",

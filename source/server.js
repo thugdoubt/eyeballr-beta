@@ -3,15 +3,42 @@
 const config = require("./config.json");
 const path = require("path");
 const express = require("express");
+const session = require("express-session");
 const bodyParser = require("body-parser");
-const cookie = require("cookie");
 const uuidv4 = require("uuid/v4");
 
+let gcpCredentials = {
+    projectId: config.PROJECT_ID,
+    keyFilename: "/opt/eyeballr/gcp-credentials.json"
+};
+
+const datastore = require("@google-cloud/datastore");
+const datastoreStore = require("@google-cloud/connect-datastore")(session);
+
 const storage = require("@google-cloud/storage");
-const gcs = new storage({projectId:"eyeballr-beta", keyFilename: "/opt/eyeballr/gcp-credentials.json"});
+const gcs = new storage(gcpCredentials);
+
+const pubsub = require("@google-cloud/pubsub");
+const gcps = new pubsub(gcpCredentials);
 
 const app = express();
 app.use(bodyParser.json({limit: config.JSON_REQUEST_LIMIT}));
+
+gcpCredentials.prefix = config.DATASTORE_PREFIX;
+app.set('trust proxy', 1);
+app.use(session({
+    store: new datastoreStore({
+        dataset: datastore(gcpCredentials)
+    }),
+    secret: config.SESSION_SECRET,
+    resave: false,
+    saveUninitialized: true,
+    cookie: {
+        secure: config.COOKIE_SECURE,
+        maxAge: config.COOKIE_MAX_AGE
+    },
+    name: config.COOKIE_NAME
+}));
 
 function httpError(response, statusCode, errorMessage) {
     response.status(statusCode).end(JSON.stringify({"status": "error", "message": errorMessage}));
@@ -52,17 +79,16 @@ app.get("/api/v0/upload", function(req, res) {
 });
 
 app.post("/api/v0/upload", function(req, res) {
-    // check the method
     console.log("UPLOAD");
     try {
-        // parse cookies, get/generate UID
-        console.log(req.headers);
-        let cookies = cookie.parse(req.headers.cookie || "");
-        let uid = ("UID" in cookies) ? cookies.UID : uuidv4();
+        // get/create UID
+        let uid = req.session.uid ? req.session.uid : uuidv4();
+        req.session.uid = uid;
         console.log("UID:", uid);
+
         // set up the response
         res.setHeader("content-type", "application/json");
-        res.cookie("UID", uid, { maxAge: 999999999 });
+
         // process the image
         switch (req.get("content-type")) {
             case "application/json":
@@ -95,11 +121,42 @@ app.post("/api/v0/upload", function(req, res) {
             default:
                 return httpError(res, 400, "invalid content-type");
         }
+        // yay!
+        res.status(200).end(JSON.stringify({"status": "OK"}));
     } catch(err) {
         return httpError(res, 500, "OOPS: " + err);
     }
-    // yay!
-    res.status(200).end(JSON.stringify({"status": "OK"}));
+});
+
+app.post("/api/v0/merge", function(req, res) {
+    console.log("MERGE");
+    try {
+        // get/create UID
+        let uid = req.session.uid ? req.session.uid : uuidv4();
+        req.session.uid = uid;
+        console.log("UID:", uid);
+
+        // set up the response
+        res.setHeader("content-type", "application/json");
+
+        // process the image
+        gcps
+            .topic(config.TOPIC_NAME)
+            .publisher()
+            .publish(Buffer.from(uid), {})
+            .then(function(results) {
+                let messageId = results[0];
+                console.log(`Published message ${messageId}`);
+            })
+            .catch(function(err) {
+                console.log(`Publish failure: ${err}`);
+                return httpError(res, 500, "OOPS: " + err);
+            });
+        // yay!
+        res.status(200).end(JSON.stringify({"status": "OK"}));
+    } catch(err) {
+        return httpError(res, 500, "OOPS: " + err);
+    }
 });
 
 app.listen(config.API_PORT, config.API_HOST);
