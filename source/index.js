@@ -3,8 +3,6 @@ const exec = require('child_process').exec;
 const fs = require('fs');
 const path = require('path');
 const sizeOf = require('image-size');
-const cookie = require('cookie');
-const uuidv4 = require('uuid/v4');
 
 const storage = require('@google-cloud/storage');
 const gcs = new storage();
@@ -15,11 +13,11 @@ const client = new vision.ImageAnnotatorClient();
 exports.processImage = function(event) {
     let file = event.data;
     let p = path.parse(file.name);
-    let uid = path.basename(p.dir);
+    let ticket = path.basename(p.dir);
     let basename = p.base;
-    let tempDir = `${config.TMP_DIR}/${uid}`;
+    let tempDir = `${config.TMP_DIR}/${ticket}`;
     let tempFilename = `${tempDir}/${basename}`;
-    let outputFilename = `${uid}/${basename}`;
+    let outputFilename = `${ticket}/${basename}`;
 
     console.log('tempDir', tempDir);
     console.log('tempFilename', tempFilename);
@@ -85,9 +83,9 @@ exports.processImage = function(event) {
 
 exports.mergeImage = function(event, callback) {
     let message = event.data;
-    let uid = Buffer.from(message.data, 'base64').toString();
-    console.log(uid);
-    let tempDir = `${config.TMP_DIR}/${uid}-animate`;
+    let ticket = Buffer.from(message.data, 'base64').toString();
+    console.log(ticket);
+    let tempDir = `${config.TMP_DIR}/${ticket}-animate`;
 
     console.log('tempDir', tempDir);
 
@@ -99,7 +97,7 @@ exports.mergeImage = function(event, callback) {
         .then(function() {
             console.log('listing files');
             // fetch the list of files in the tmp bucket
-            return gcs.bucket(config.TMP_BUCKET).getFiles({prefix: uid})
+            return gcs.bucket(config.TMP_BUCKET).getFiles({prefix: ticket})
         })
         .then(function(data) {
             console.log('fetching files');
@@ -127,9 +125,28 @@ exports.mergeImage = function(event, callback) {
         })
         .then(function(data) {
             let outputFile = data[0];
-            let uploadFile = `${uid}/out.gif`;
+            let uploadFile = `${ticket}/out.gif`;
             console.log('animated as', outputFile);
-            return gcs.bucket(config.OUTPUT_BUCKET).upload(outputFile, {destination: uploadFile});
+            return Promise.all([uploadFile, gcs.bucket(config.OUTPUT_BUCKET).upload(outputFile, {destination: uploadFile})]);
+        })
+        .then(function(data) {
+            console.log('making public...');
+            let uploadFile = data[0];
+            return gcs.bucket(config.OUTPUT_BUCKET).file(uploadFile).makePublic();
+        })
+        .then(function() {
+            console.log('cleaning up...');
+            return gcs.bucket(config.TMP_BUCKET).getFiles({prefix: ticket})
+        })
+        .then(function(data) {
+            console.log('cleaning files');
+            let files = data[0];
+            let bucket = gcs.bucket(config.TMP_BUCKET);
+            let promises = [[]];
+            files.forEach(function(f) {
+                promises.push(bucket.file(f.name).delete());
+            });
+            return Promise.all(promises);
         })
         .then(function() {
             console.log('animation complete');

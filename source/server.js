@@ -62,6 +62,56 @@ function decodeBase64Image(dataString) {
     return response;
 }
 
+class Eyeballr {
+    constructor(ticket) {
+        this.ticket = ticket;
+    }
+
+    // add an image
+    upload(filename, filedata) {
+        let file = gcs.bucket(config.INPUT_BUCKET).file(filename);
+        return file.save(filedata);
+    }
+
+    // merge is ready when there are zero input files
+    // and more than 1 interim file
+    ready() {
+        let input = 0,
+            tmp = 0,
+            ticket = this.ticket;
+        return Promise.all([
+                gcs.bucket(config.INPUT_BUCKET).getFiles({prefix: ticket}).then(function(f) { return f[0].length }),
+                gcs.bucket(config.TMP_BUCKET).getFiles({prefix: ticket}).then(function(f) { return f[0].length })
+            ]).then(function(counts) {
+                console.log(counts);
+                return counts[0] == 0 && counts[1] > 1;
+            });
+    }
+
+    // merge the processed images into a single image
+    merge() {
+        return gcps
+            .topic(config.TOPIC_NAME)
+            .publisher()
+            .publish(Buffer.from(this.ticket), {})
+            .then(function(results) {
+                let messageId = results[0];
+                console.log(`Published message ${messageId}`);
+            });
+    }
+
+    // is the merge complete?
+    complete() {
+        let count = 0,
+            ticket = this.ticket;
+        return gcs.bucket(config.OUTPUT_BUCKET).getFiles({prefix: ticket}).then(function(f) { return f[0].length })
+            .then(function(count) {
+                console.log(count);
+                return count > 0;
+            });
+    }
+};
+
 app.get("/ok", function(req, res) {
     // healthcheck
     console.log("OK");
@@ -74,20 +124,24 @@ app.get("/api/ping", function(req, res) {
     res.send("eyeballr PONG");
 });
 
-app.get("/api/v0/upload", function(req, res) {
-    return httpError(res, 400, "use POST");
+app.get("/api/v0/ticket", function(req, res) {
+    let ticket = req.session.ticket ? req.session.ticket : uuidv4();
+    req.session.ticket = ticket;
+    res.status(200).end(JSON.stringify({"status": "OK", "ticket": ticket}));
 });
 
-app.post("/api/v0/upload", function(req, res) {
+app.post("/api/v0/upload/:ticket", function(req, res) {
     console.log("UPLOAD");
     try {
-        // get/create UID
-        let uid = req.session.uid ? req.session.uid : uuidv4();
-        req.session.uid = uid;
-        console.log("UID:", uid);
-
         // set up the response
         res.setHeader("content-type", "application/json");
+
+        // check the ticket
+        let ticket = req.params.ticket;
+        if (ticket !== req.session.ticket) {
+            return httpError(res, 500, "invalid ticket");
+        }
+        console.log('TICKET: ' + ticket);
 
         // process the image
         switch (req.get("content-type")) {
@@ -110,13 +164,17 @@ app.post("/api/v0/upload", function(req, res) {
                 console.log("image type:", img.type);
                 console.log("image size:", img.data.length);
                 // upload the file for processing
-                let filename = `${uid}/${path.parse(req.body.filename).base}`;
+                let filename = `${ticket}/${path.parse(req.body.filename).base}`;
                 let file = gcs.bucket(config.INPUT_BUCKET).file(filename);
+                let eb = new Eyeballr(ticket);
+                eb.upload(filename, img.data);
+                /*
                 file.save(img.data, function(err) {
                     if (err) {
                         throw new Error("Unable to save: " + err);
                     }
                 });
+                */
                 break;
             default:
                 return httpError(res, 400, "invalid content-type");
@@ -128,32 +186,78 @@ app.post("/api/v0/upload", function(req, res) {
     }
 });
 
-app.post("/api/v0/merge", function(req, res) {
-    console.log("MERGE");
+app.get("/api/v0/ready/:ticket", function(req, res) {
+    console.log("MERGEREADY");
     try {
-        // get/create UID
-        let uid = req.session.uid ? req.session.uid : uuidv4();
-        req.session.uid = uid;
-        console.log("UID:", uid);
-
         // set up the response
         res.setHeader("content-type", "application/json");
 
-        // process the image
-        gcps
-            .topic(config.TOPIC_NAME)
-            .publisher()
-            .publish(Buffer.from(uid), {})
-            .then(function(results) {
-                let messageId = results[0];
-                console.log(`Published message ${messageId}`);
-            })
-            .catch(function(err) {
-                console.log(`Publish failure: ${err}`);
-                return httpError(res, 500, "OOPS: " + err);
+        // check the ticket
+        let ticket = req.params.ticket;
+        if (ticket !== req.session.ticket) {
+            return httpError(res, 500, "invalid ticket");
+        }
+        console.log('TICKET: ' + ticket);
+
+        // check to see if merging is ready
+        let eb = new Eyeballr(ticket);
+        eb.ready()
+            .then(function(ready) {
+                res.status(200).end(JSON.stringify({"ready": ready}));
             });
-        // yay!
-        res.status(200).end(JSON.stringify({"status": "OK"}));
+    } catch(err) {
+        return httpError(res, 500, "OOPS: " + err);
+    }
+});
+
+app.post("/api/v0/merge/:ticket", function(req, res) {
+    console.log("MERGE");
+    try {
+        // set up the response
+        res.setHeader("content-type", "application/json");
+
+        // check the ticket
+        let ticket = req.params.ticket;
+        if (ticket !== req.session.ticket) {
+            return httpError(res, 500, "invalid ticket");
+        }
+        console.log('TICKET: ' + ticket);
+
+        let eb = new Eyeballr(ticket);
+        if (eb.ready()) {
+            // yay!
+            eb.merge()
+                .then(function() {
+                    res.status(200).end(JSON.stringify({"status": "OK"}));
+                });
+        } else {
+            httpError(res, 503, 'Not yet ready');
+        }
+    } catch(err) {
+        return httpError(res, 500, "OOPS: " + err);
+    }
+});
+
+app.get("/api/v0/complete/:ticket", function(req, res) {
+    console.log("COMPLETEREADY");
+    try {
+        // set up the response
+        res.setHeader("content-type", "application/json");
+
+        // check the ticket
+        let ticket = req.params.ticket;
+        if (ticket !== req.session.ticket) {
+            return httpError(res, 500, "invalid ticket");
+        }
+        console.log('TICKET: ' + ticket);
+
+        // check to see if merging is ready
+        let eb = new Eyeballr(ticket);
+        let url = `https://storage.googleapis.com/${config.OUTPUT_BUCKET}/${ticket}/out.gif`;
+        eb.complete()
+            .then(function(ready) {
+                res.status(200).end(JSON.stringify({"complete": ready, "url": url}));
+            });
     } catch(err) {
         return httpError(res, 500, "OOPS: " + err);
     }
