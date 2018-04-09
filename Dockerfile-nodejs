@@ -5,7 +5,9 @@ COPY source .
 COPY secrets/gcp-credentials.json .
 RUN addgroup -g 6666 eyeballr && \
     adduser -D -u 6666 -G eyeballr eyeballr && \
-    chown -R eyeballr: .
+    chown -R eyeballr: . && \
+    apk update && \
+    apk add libc6-compat
 USER eyeballr
 RUN npm install
 CMD ["npm", "start"]
