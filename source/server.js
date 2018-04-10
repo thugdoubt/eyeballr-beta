@@ -172,7 +172,7 @@ app.post("/api/v0/upload/:ticket", function(req, res) {
                 let eb = new Eyeballr(ticket);
                 let metadata = {ticket: ticket,
                                 filename: req.body.filename,
-                                cas: req.body.cas || false};
+                                cas: req.body.cas || undefined};
                 console.log('metadata:', metadata);
                 eb.upload(filename, img.data, metadata);
                 break;

@@ -98,6 +98,7 @@ exports.processImage = function(event) {
         })
         .catch(function(err) {
             console.log('processImage error:', err);
+            return gcs.bucket(file.bucket).file(file.name).delete()
         });
 };
 
