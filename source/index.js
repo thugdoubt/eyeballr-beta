@@ -42,7 +42,7 @@ exports.processImage = function(event) {
             // get metadata
             return gcs.bucket(file.bucket).file(file.name).getMetadata()
                 .then(function(data) {
-                    let metadata = data[0];
+                    let metadata = data[0].metadata;
                     // download image to temp file
                     return Promise.all([metadata, gcs.bucket(file.bucket).file(file.name).download({destination: tempFilename})])
                 });
@@ -50,6 +50,7 @@ exports.processImage = function(event) {
         .then(function(data) {
             console.log('downloaded!');
             let metadata = data[0];
+            console.log(metadata);
             if (metadata.cas) {
                 // liquid rescale and find a single face in the photo
                 let command1 = `mogrify -liquid-rescale 50% ${tempFilename}`;
