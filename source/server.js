@@ -72,7 +72,7 @@ class Eyeballr {
         let file = gcs.bucket(config.INPUT_BUCKET).file(filename);
         return file.save(filedata)
             .then(function() {
-                return file.setMetadata(metadata);
+                return file.setMetadata({'metadata': metadata});
             });
     }
 
