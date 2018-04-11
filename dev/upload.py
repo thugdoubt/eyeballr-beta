@@ -10,7 +10,7 @@ from pprint import pprint as pp
 @click.command()
 @click.argument('baseurl', nargs=1)
 @click.argument('filename', nargs=-1)
-@click.option('--cas', is_flag=True, default=False)
+@click.option('--cas', type=int, default=50)
 def main(baseurl, filename, cas):
     jar = requests.cookies.RequestsCookieJar()
 

@@ -52,9 +52,12 @@ exports.processImage = function(event) {
             let metadata = data[0];
             console.log(metadata);
             if (metadata.cas) {
+                let cas = parseInt(metadata.cas);
+                cas = (isNaN(cas) || cas < 0 || cas > 201) ? 50 : cas;
+                let sac = Math.floor(100 * (100 / cas));
                 // liquid rescale and find a single face in the photo
-                let command1 = `mogrify -liquid-rescale 50% ${tempFilename}`;
-                let command2 = `mogrify -liquid-rescale 200% ${tempFilename}`;
+                let command1 = `mogrify -liquid-rescale ${cas}% ${tempFilename}`;
+                let command2 = `mogrify -liquid-rescale ${sac}% ${tempFilename}`;
                 return promiseExec(command1)
                     .then(function() {
                         return promiseExec(command2);
