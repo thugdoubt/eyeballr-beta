@@ -39,13 +39,36 @@ exports.processImage = function(event) {
             if (!file.name) {
                 throw new Error('filename not provided');
             }
-            // download image to temp file
-            return gcs.bucket(file.bucket).file(file.name).download({destination: tempFilename})
+            // get metadata
+            return gcs.bucket(file.bucket).file(file.name).getMetadata()
+                .then(function(data) {
+                    let metadata = data[0].metadata;
+                    // download image to temp file
+                    return Promise.all([metadata, gcs.bucket(file.bucket).file(file.name).download({destination: tempFilename})])
+                });
         })
-        .then(function() {
+        .then(function(data) {
             console.log('downloaded!');
-            // find a single face in the photo
-            return getSingleFace(tempFilename);
+            let metadata = data[0];
+            console.log(metadata);
+            if (metadata.cas) {
+                let cas = parseInt(metadata.cas);
+                cas = (isNaN(cas) || cas < 0 || cas > 200) ? 50 : cas;
+                let sac = Math.floor(100 * (100 / cas));
+                // liquid rescale and find a single face in the photo
+                let command1 = `mogrify -liquid-rescale ${cas}% ${tempFilename}`;
+                let command2 = `mogrify -liquid-rescale ${sac}% ${tempFilename}`;
+                return promiseExec(command1)
+                    .then(function() {
+                        return promiseExec(command2);
+                    })
+                    .then(function() {
+                        return getSingleFace(tempFilename);
+                    });
+            } else {
+                // find a single face in the photo
+                return getSingleFace(tempFilename);
+            }
         })
         .then(function(face) {
             console.log('got face!');
@@ -78,6 +101,7 @@ exports.processImage = function(event) {
         })
         .catch(function(err) {
             console.log('processImage error:', err);
+            return gcs.bucket(file.bucket).file(file.name).delete()
         });
 };
 

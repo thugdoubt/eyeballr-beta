@@ -1,5 +1,6 @@
 *.swp
 venv
 /secrets
+/tmp
 node_modules
 package-lock.json

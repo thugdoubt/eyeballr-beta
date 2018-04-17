@@ -10,13 +10,15 @@ from pprint import pprint as pp
 @click.command()
 @click.argument('baseurl', nargs=1)
 @click.argument('filename', nargs=-1)
-def main(baseurl, filename):
+@click.option('--cas', type=int, default=50)
+def main(baseurl, filename, cas):
     jar = requests.cookies.RequestsCookieJar()
 
     # get ticket
     url = '{}/api/v0/ticket'.format(baseurl)
     res = requests.get(url, cookies=jar)
     jar = res.cookies
+    print(res.content)
     ticket = res.json()['ticket']
 
     # upload files
@@ -26,7 +28,7 @@ def main(baseurl, filename):
         with open(fn, 'rb') as f:
             content = f.read()
             data = ('data:image/png;base64,' + content.encode('base64')).replace('\n', '')
-            res = requests.post(url, json={'filename': fn, 'data': data}, cookies=jar)
+            res = requests.post(url, json={'filename': fn, 'cas': cas, 'data': data}, cookies=jar)
             pp(res.content)
 
     # wait for files to be pre-processed

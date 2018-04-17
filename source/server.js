@@ -68,9 +68,12 @@ class Eyeballr {
     }
 
     // add an image
-    upload(filename, filedata) {
+    upload(filename, filedata, metadata) {
         let file = gcs.bucket(config.INPUT_BUCKET).file(filename);
-        return file.save(filedata);
+        return file.save(filedata)
+            .then(function() {
+                return file.setMetadata({'metadata': metadata});
+            });
     }
 
     // merge is ready when there are zero input files
@@ -167,14 +170,11 @@ app.post("/api/v0/upload/:ticket", function(req, res) {
                 let filename = `${ticket}/${path.parse(req.body.filename).base}`;
                 let file = gcs.bucket(config.INPUT_BUCKET).file(filename);
                 let eb = new Eyeballr(ticket);
-                eb.upload(filename, img.data);
-                /*
-                file.save(img.data, function(err) {
-                    if (err) {
-                        throw new Error("Unable to save: " + err);
-                    }
-                });
-                */
+                let metadata = {ticket: ticket,
+                                filename: req.body.filename,
+                                cas: req.body.cas || undefined};
+                console.log('metadata:', metadata);
+                eb.upload(filename, img.data, metadata);
                 break;
             default:
                 return httpError(res, 400, "invalid content-type");
